@@ -1,8 +1,7 @@
 import React from "react";
-import { View, Text } from "react-native";
-import { createStackNavigator } from "react-navigation";
 import HeaderTitle from "../../components/HeaderTitle";
 import { cliqueBlue } from "../../assets/constants";
+import CalendarComponent from "../../components/CalendarComponent";
 
 class PersonalCalendar extends React.Component {
   static navigationOptions = {
@@ -13,16 +12,8 @@ class PersonalCalendar extends React.Component {
   };
 
   render() {
-    return (
-      <View>
-        <Text>This is the calendar screen!</Text>
-      </View>
-    );
+    return <CalendarComponent hasButton={false} personal={true} />;
   }
 }
 
-const CalendarStack = createStackNavigator({
-  Main: PersonalCalendar
-});
-
-export default CalendarStack;
+export default PersonalCalendar;

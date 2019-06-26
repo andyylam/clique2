@@ -1,26 +1,26 @@
 import React from "react";
 import {
   View,
-  Text,
   TextInput,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
   Dimensions
 } from "react-native";
 import { connect } from "react-redux";
 import { Field, reduxForm } from "redux-form";
 
+import Text from "../../../components/Text";
 import ContinueButton from "../../../components/ContinueButton";
 import { createGroup } from "../../../store/actions/groups";
 import defaultPicture from "../../../assets/default_profile.png";
 import ImagePicker from "../../../components/ImagePickerComponent";
 import HeaderTitle from "../../../components/HeaderTitle";
+import Spinner from "../../../components/Spinner";
 
 const required = value => (value ? undefined : "Required");
 
 class GroupDetails extends React.Component {
-  static navigationOptions = ({ navigation }) => {
+  static navigationOptions = () => {
     return {
       headerTitle: (
         <View style={{ bottom: 5 }}>
@@ -30,15 +30,24 @@ class GroupDetails extends React.Component {
     };
   };
 
-  handleSubmit = async values => {
-    await this.props.createGroup(
-      values.groupname,
-      values.grouppicture.uri,
-      this.props.user.uid,
-      "This is a new clique!",
-      Object.values(this.props.navigation.getParam("users"))
-    );
-    this.props.navigation.navigate("Main");
+  state = { loading: false };
+
+  handleSubmit = values => {
+    this.setState({ loading: true });
+    this.props
+      .dispatch(
+        createGroup(
+          values.groupname,
+          values.grouppicture.uri,
+          values.grouppicture.fileName.split(".")[1],
+          this.props.user.uid,
+          "This is a new clique!",
+          Object.values(this.props.navigation.getParam("users"))
+        )
+      )
+      .then(() => {
+        this.props.navigation.navigate("Main");
+      });
   };
 
   renderImagePicker = props => {
@@ -51,17 +60,21 @@ class GroupDetails extends React.Component {
     );
   };
 
-  renderInput = ({ input, label, meta }) => {
+  renderInput = ({ input, label }) => {
     return (
-      <TextInput {...input} style={styles.textInput} placeholder={label} />
+      <TextInput
+        {...input}
+        style={[styles.textInput, { marginTop: 5 }]}
+        placeholder={label}
+      />
     );
   };
 
   renderGroupPicture = () => {
     return (
       <View style={styles.container}>
-        <View style={{ marginTop: "20%" }}>
-          <Text style={styles.text}>
+        <View style={{ marginTop: "15%" }}>
+          <Text body grey style={styles.text}>
             Enter your group name and group picture!
           </Text>
           <Field
@@ -71,7 +84,7 @@ class GroupDetails extends React.Component {
           />
           <Field
             name="groupname"
-            component={props => this.renderInput(props)}
+            component={this.renderInput}
             label="Enter group name"
             validate={required}
           />
@@ -81,8 +94,9 @@ class GroupDetails extends React.Component {
           onPress={this.props.handleSubmit(this.handleSubmit.bind(this))}
           style={{ position: "absolute", top: "90%", left: "80%" }}
         >
-          <ContinueButton />
+          <ContinueButton name="arrow-forward" />
         </TouchableOpacity>
+        {this.state.loading && <Spinner />}
       </View>
     );
   };
@@ -100,12 +114,14 @@ const styles = StyleSheet.create({
     height: "100%"
   },
   text: {
-    fontSize: 16,
     marginBottom: 10
   },
   textInput: {
+    fontWeight: "500",
+    fontSize: 18,
+    textAlign: "center",
     top: "20%",
-    height: 30,
+    height: 40,
     borderBottomColor: "#bbb",
     borderBottomWidth: StyleSheet.hairlineWidth
   }
@@ -116,7 +132,4 @@ const mapStateToProps = state => {
 };
 
 let form = reduxForm({ form: "groupDetails" })(GroupDetails);
-export default connect(
-  mapStateToProps,
-  { createGroup }
-)(form);
+export default connect(mapStateToProps)(form);

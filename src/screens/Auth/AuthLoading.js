@@ -1,38 +1,35 @@
 import React from "react";
-import { View, StyleSheet, Image } from "react-native";
 import firebase from "react-native-firebase";
 import { connect } from "react-redux";
 
-import { cliqueBlue } from "../../assets/constants";
-import icon from "../../assets/icon.png";
 import { setUserDetails } from "../../store/actions/auth";
-import AsyncStorage from "@react-native-community/async-storage";
+import { fetchGroups } from "../../store/actions/groups";
+import { fetchAllEvents, fetchPersonalEvents } from "../../store/actions/calendar";
+import { populateGroups } from "../../store/actions/messageCounter";
+
+import NetInfo from "@react-native-community/netinfo";
+
+import LoadingView from "../../components/LoadingView";
 
 class AuthLoading extends React.Component {
-  storeData = async (key, val) => {
-    try {
-      val = JSON.stringify(val);
-      if (val) {
-        await AsyncStorage.setItem(key, val);
-      } else {
-        console.log("no value");
-      }
-    } catch (e) {
-      console.log(e);
-    }
-  };
-
   // preload data (loading screen)
   async componentDidMount() {
-    
-    await firebase.auth().onAuthStateChanged(user => {
+    //firebase.auth().currentUser.delete();
+    await firebase.auth().onAuthStateChanged(async user => {
       if (user) {
         if (user.displayName && user.photoURL) {
-          this.storeData("profilePicture", user.photoURL);
-          // AsyncStorage.setItem("profilePicture", JSON.stringify(user.photoURL));
-          // update user auth details in redux store
-          this.props.setUserDetails(user.toJSON());
-          this.props.navigation.navigate("App");
+          NetInfo.fetch().then(state => {
+            if (state.isConnected) {
+              this.props.setUserDetails(user);
+              this.props
+                .fetchGroups()
+                .then(() => this.props.fetchAllEvents(user.uid))
+                .then(() => this.props.fetchPersonalEvents(user.uid))
+                .then(() => this.props.navigation.navigate("App"));
+            } else {
+              this.props.navigation.navigate("App");
+            }
+          });
         } else {
           // get user to set username and profile picture
           this.props.navigation.navigate("UserDetails");
@@ -45,30 +42,17 @@ class AuthLoading extends React.Component {
   }
 
   render() {
-    return (
-      <View style={styles.container}>
-        <Image source={icon} style={styles.iconStyle} resizeMode="contain" />
-      </View>
-    );
+    return <LoadingView />;
   }
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: cliqueBlue,
-    justifyContent: "center",
-    alignItems: "center",
-    width: "100%"
-  },
-  iconStyle: {
-    width: "50%",
-    height: "50%",
-    marginBottom: "20%"
-  }
-});
-
 export default connect(
   null,
-  { setUserDetails }
+  {
+    setUserDetails,
+    fetchGroups,
+    fetchAllEvents,
+    populateGroups,
+    fetchPersonalEvents
+  }
 )(AuthLoading);

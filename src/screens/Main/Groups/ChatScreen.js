@@ -1,61 +1,127 @@
 import React, { Component } from "react";
-import { SafeAreaView, Text, View, TextInput, Dimensions, StyleSheet, KeyboardAvoidingView, Keyboard, Platform } from "react-native";
-import { TouchableOpacity, FlatList, TouchableWithoutFeedback } from "react-native-gesture-handler";
-import firebase from "react-native-firebase";
+import {
+  View,
+  TextInput,
+  Dimensions,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Keyboard,
+  Platform,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  SafeAreaView
+} from "react-native";
+import { FlatList } from "react-native-gesture-handler";
+import {
+  toggleEventModal,
+  populateAttending,
+  populateNotAttending
+} from "../../../store/actions/eventModal";
 import { connect } from "react-redux";
-import { fetchedConversation } from "../../../store/actions/messages"
+import { fetchConversation } from "../../../store/actions/messages";
+import { convertDate, cliqueBlue } from "../../../assets/constants";
+import firebase from "react-native-firebase";
 import MyIcon from "../../../components/MyIcon";
-import _ from "lodash";
+import EventModal from "../EventModal";
+import { sortBy, values } from "lodash";
+import GroupPicture from "../../../components/GroupPicture";
+import Text from "../../../components/Text";
+import EventBubble from "../../../components/EventBubble";
+import MessageBubble from "../../../components/MessageBubble";
+import theme from "../../../assets/theme";
+import { fetchPersonalEvents } from "../../../store/actions/calendar";
 
 class ChatScreen extends Component {
   constructor(props) {
-      super(props);
-      this.state = {
-          uid: this.props.uid,
-          groupID: this.props.navigation.getParam("group").groupID,
-          textMessage: '',
-          prevDay: (new Date()).getDay(),
-      }
-      this.convertTime = this.convertTime.bind(this);
-      this.sendMessage = this.sendMessage.bind(this);
-      this.handleChange = this.handleChange.bind(this);
-      this.convertDate = this.convertDate.bind(this);
+    super(props);
+    this.state = {
+      uid: this.props.uid,
+      groupID: this.props.navigation.getParam("group").groupID,
+      textMessage: "",
+      dayOfLastMsg: new Date().getDay(),
+      dateOfLastMsg: new Date().getDate()
+    };
+    this.convertTime = this.convertTime.bind(this);
+    this.sendMessage = this.sendMessage.bind(this);
+    this.handleChange = this.handleChange.bind(this);
+    this.showEventModal = this.showEventModal.bind(this);
+    // this.sameDay = this.sameDay.bind(this);
   }
-  
-  messagesRef = firebase.database().ref('messages');
+
+  messagesRef = firebase.database().ref("messages");
 
   static navigationOptions = ({ navigation }) => {
     return {
       headerTintColor: "#fff",
-      headerTitle: navigation.getParam("group").groupName,
+      headerTitle: (
+        <TouchableOpacity
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            justifyContent: "flex-start",
+            alignItems: "center",
+            paddingLeft: "5%"
+          }}
+          onPress={() =>
+            navigation.navigate("GroupInformation", {
+              group: navigation.getParam("group")
+            })
+          }
+        >
+          <GroupPicture
+            cached
+            source={navigation.getParam("image")}
+            value={0.1}
+          />
+          <Text
+            style={{
+              color: "#fff",
+              paddingLeft: 15,
+              fontSize: 18,
+              fontWeight: "500",
+              textAlignVertical: "center"
+            }}
+          >
+            {navigation.getParam("group").groupName}
+          </Text>
+        </TouchableOpacity>
+      ),
       headerRight: (
-        <TouchableOpacity onPress={() => navigation.navigate("CreateEvents", {
-          groupID: navigation.getParam("group").groupID
-        })}>
+        <TouchableOpacity
+          onPress={() =>
+            navigation.navigate("GroupCalendar", {
+              groupID: navigation.getParam("group").groupID,
+              title: "Group Calendar"
+            })
+          }
+        >
           <MyIcon
-            name="ios-add"
-            size={32}
+            name="calendar"
+            size={27}
             color="white"
+            type="material-community"
             style={{ marginRight: 20 }}
           />
         </TouchableOpacity>
       )
-    }
+    };
   };
 
   componentWillMount() {
     const groupID = this.state.groupID;
-    this.messagesRef.child(`${groupID}`).on('value', snapshot => {
-      this.props.dispatch(fetchedConversation(groupID, _.sortBy(_.values(snapshot.val()), 'timestamp')));
-    })
+    this.messagesRef.child(`${groupID}`).on("value", snapshot => {
+      this.props.dispatch(
+        fetchConversation(groupID, sortBy(values(snapshot.val()), "timestamp"))
+      );
+    });
     this.keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
+      "keyboardDidShow",
       this.scrollToBottom
-    )
+    );
     this.keyboardDidHideListener = Keyboard.addListener(
-      'keyboardDidHide',
+      "keyboardDidHide",
       this.scrollToBottom
-    )
+    );
   }
 
   componentWillUnmount() {
@@ -64,8 +130,8 @@ class ChatScreen extends Component {
   }
 
   scrollToBottom = (contentHeight, contentWidth) => {
-    this.refs.messageList.scrollToEnd({animated: true})
-  }
+    this.refs.messageList.scrollToEnd({ animated: false });
+  };
 
   handleChange = key => val => {
     this.setState({
@@ -74,204 +140,253 @@ class ChatScreen extends Component {
   };
 
   convertTime = time => {
-      let d = new Date(time);
-      let c = new Date();
-      let result = (d.getHours() < 10 ? 0 : '') + d.getHours() + ":";
-      result += (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
-      return result;
-  }
-
-  convertDate = dateObj => {
-    dateObj = new Date(dateObj);
-    const date = dateObj.getDate();
-    let month = dateObj.getMonth();
-    let hour = dateObj.getHours();
-    hour = hour < 10 ? '0' + hour : hour;
-    let minute = dateObj.getMinutes();
-    minute = minute < 10 ? '0' + minute : minute;
-    let day = dateObj.getDay();
-    switch(day) {
-      case 0:
-        day = "Sunday"
-        break;
-      case 1:
-        day = "Monday"
-        break;
-      case 2:
-        day = "Tuesday"
-        break;
-      case 3:
-        day = "Wednesday"
-        break;
-      case 4:
-        day = "Thursday"
-        break;
-      case 5:
-        day = "Friday"
-        break;
-      case 6:
-        day = "Saturday"
-        break;
-      default:
-        day = "No day defined";
-        break;
-    }
-    switch(month) {
-      case 0:
-        month = "Jan";
-        break;
-      case 1:
-        month = "Feb";
-        break;
-      case 2:
-        month = "Mar";
-        break;
-      case 3:
-        month = "Apr";
-        break;
-      case 4:
-        month = "May";
-        break;
-      case 5:
-        month = "Jun";
-        break;
-      case 6:
-        month = "Jul";
-        break;
-      case 7:
-        month = "Aug";
-        break;
-      case 8:
-        month = "Sep";
-        break;
-      case 9:
-        month = "Oct";
-        break;
-      case 10:
-        month = "Nov";
-        break;
-      case 11:
-        month = "Dec";
-        break;
-      default:
-        month = "No Month Defined";
-        break;
-    }
-    return `${day}, ${date} ${month}, ${hour}:${minute}`;
-  }
-
-  // sameDay = (dateOfMessage, message) => {
-  //   console.log("props date = " + this.props.prevDate);
-  //   if(dateOfMessage === this.props.prevDate){
-  //     console.log("in true. day = " + dateOfMessage + ' ' + message)
-  //     return true;
-  //   }
-  //   console.log('in false. day = ' + dateOfMessage + ' ' + message);
-  //   this.props.dispatch(changePrevDate(this.state.groupID, dateOfMessage));
-  //   return false;
-  // }
-
-  sendMessage = () => {
-      const groupID = this.state.groupID;
-      if(this.state.textMessage.length > 0) {
-        const msgID = this.messagesRef.child(`${groupID}`).push().key;
-        let message = {
-            messageType: "text",
-            message: this.state.textMessage,
-            timestamp: firebase.database.ServerValue.TIMESTAMP,
-            sender: this.state.uid
-        }
-        this.messagesRef.child(`${groupID}`).child(`${msgID}`).set(message);
-        this.setState({ textMessage: ''})
-      }
+    let d = new Date(time);
+    let result = (d.getHours() < 10 ? 0 : "") + d.getHours() + ":";
+    result += (d.getMinutes() < 10 ? "0" : "") + d.getMinutes();
+    return result;
   };
 
-  renderRow = ({ item }) => {
-    if(item.messageType === "text"){
-      return(
-        <View style={item.sender === this.props.uid ? styles.myMessageBubble : styles.yourMessageBubble}>
-          <View style={{flexWrap: "wrap"}}>
-            <Text style={{color: '#fff', padding: 7, fontSize: 16}}>
-              {item.message}
-            </Text>
-          </View>
-          <View style={{justifyContent: 'flex-end'}}>
-            <Text style={{color:'#eee', paddingRight: 13, paddingBottom: 7, fontSize: 10}}>
-              {this.convertTime(item.timestamp)}
-            </Text>
-          </View>
-        </View>
-      )
-    } else if(item.messageType === "event") {
-      return (
-        <View style={item.sender === this.props.uid ? styles.myEventBubble : styles.yourEventBubble}>
-          <View style={styles.eventBubbleContent}>
-            <View>
-              <Text style={{...styles.eventDetails, fontWeight: "bold"}}>
-                {item.event.title}
-              </Text>
-              <Text style={styles.eventDetails}>
-                {this.convertDate(item.event.from) + " to\n" + this.convertDate(item.event.to)}
-              </Text>
-              <Text style={{...styles.eventDetails, display: item.event.location ? 'flex' : 'none'}}>
-                {item.event.location}
-              </Text>
-            </View>
-            <View style={{justifyContent: 'flex-end'}}>
-              <Text style={{color:'#eee', paddingRight: 13, paddingBottom: 7, fontSize: 10}}>
-                {this.convertTime(item.timestamp)}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.eventBubbleButtons}>
-            <View style={{flex: 1}}>
-              <TouchableOpacity style={styles.acceptButton}>
-                <Text style={styles.invitationButton}>Accept</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={{flex: 1}}>
-              <TouchableOpacity style={styles.rejectButton}>
-                <Text style={styles.invitationButton}>Reject</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )
+  sendMessage = () => {
+    console.log("Sending Message");
+    const groupID = this.state.groupID;
+    if (this.state.textMessage.length > 0) {
+      const msgID = this.messagesRef.child(`${groupID}`).push().key;
+      let message = {
+        messageType: "text",
+        message: this.state.textMessage,
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+        sender: this.state.uid,
+        username: this.props.username
+      };
+      this.messagesRef
+        .child(`${groupID}`)
+        .child(`${msgID}`)
+        .set(message);
+      firebase
+        .database()
+        .ref(`groups/${groupID}`)
+        .child("last_message")
+        .set(message);
+      this.setState({ textMessage: "" });
     }
+  };
+
+  respondToInvitation = (eventID, response) => async () => {
+    const eventSnapshot = await firebase
+      .database()
+      .ref(`events/${this.state.groupID}/${eventID}`)
+      .once("value");
+    const event = eventSnapshot.val();
+    const attending = (event.attending || []).filter(
+      uid => uid !== this.props.uid
+    );
+    const notAttending = (event.notAttending || []).filter(
+      uid => uid !== this.props.uid
+    );
+    const noResponse = (event.noResponse || []).filter(
+      uid => uid !== this.props.uid
+    );
+    let updatedEvent;
+    if (response) {
+      updatedEvent = {
+        ...event,
+        attending: [...attending, this.props.uid],
+        notAttending,
+        noResponse
+      };
+      firebase
+        .database()
+        .ref(`users/${this.props.uid}/attending/${this.state.groupID}/${event.eventID}`)
+        .set(true)
+      firebase
+        .database()
+        .ref(`users/${this.props.uid}/notAttending/${this.state.groupID}/${event.eventID}`)
+        .remove()
+      this.props.dispatch(fetchPersonalEvents(this.props.uid))
+    } else {
+      updatedEvent = {
+        ...event,
+        attending,
+        noResponse,
+        notAttending: [...notAttending, this.props.uid]
+      };
+      firebase
+        .database()
+        .ref(`users/${this.props.uid}/notAttending/${this.state.groupID}/${event.eventID}`)
+        .set(true)
+      firebase
+        .database()
+        .ref(`users/${this.props.uid}/attending/${this.state.groupID}/${event.eventID}`)
+        .remove()
+      this.props.dispatch(fetchPersonalEvents(this.props.uid))
+    }
+    firebase
+      .database()
+      .ref(`events/${this.state.groupID}/${eventID}`)
+      .set(updatedEvent);
+
+    // Updates event chat message the event is attached to
+    const msgID = updatedEvent.msgID;
+    firebase
+      .database()
+      .ref(`messages/${this.state.groupID}/${msgID}/event`)
+      .set(updatedEvent);
+  };
+
+  /*
+  Fetches Event data and display names of all uid, and stored in state for event modal to use
+  */
+  showEventModal = event => async () => {
+    let attending = event.attending || [];
+    let notAttending = event.notAttending || [];
+    attending = await attending.map(async uid => {
+      const nameSnapshot = await firebase
+        .database()
+        .ref(`users/${uid}/displayName`)
+        .once("value");
+      return nameSnapshot.val();
+    });
+
+    Promise.all(attending).then(members => {
+      this.props.dispatch(populateAttending(members));
+    });
+
+    notAttending = await notAttending.map(async uid => {
+      const nameSnapshot = await firebase
+        .database()
+        .ref(`users/${uid}/displayName`)
+        .once("value");
+      return nameSnapshot.val();
+    });
+
+    Promise.all(notAttending).then(members => {
+      this.props.dispatch(populateNotAttending(members));
+    });
+    this.props.dispatch(toggleEventModal(true, event));
+    // this.props.navigation.navigate("EventModal", {
+    //   modalVisibility: true
+    // });
+  };
+
+  // sameDay = (dateOfLastMsg, dayOfLastMsg) => {
+  //   console.log("props date = " + this.props.prevDate);
+  //   if (
+  //     dateOfLastMsg === this.state.dateOfLastMsg &&
+  //     dayOfLastMsg === this.state.dayOfLastMsg
+  //   ) {
+  //     console.log("in true. " + `${dateOfLastMsg}/${dayOfLastMsg}`);
+  //     return true;
+  //   }
+  //   console.log("in false. " + `${dateOfLastMsg}/${dayOfLastMsg}`);
+  //   this.setState({
+  //     dateOfLastMsg,
+  //     dayOfLastMsg
+  //   });
+  //   return false;
+  // };
+
+  renderRow = ({ item }) => {
+    if (item.messageType === "text") {
+      return (
+        <MessageBubble
+          style={[
+            { flexDirection: "column" },
+            item.sender === this.props.uid
+              ? styles.myMessageBubble
+              : styles.yourMessageBubble
+          ]}
+          uid={this.props.uid}
+          convertTime={this.convertTime}
+          item={item}
+          maxWidth={Dimensions.get("window").width}
+          mine={item.sender === this.props.uid}
+        />
+      );
+    } else if (item.messageType === "event") {
+      const eventID = item.event.eventID;
+      return (
+        <EventBubble
+          style={
+            item.sender === this.props.uid
+              ? styles.myEventBubble
+              : styles.yourEventBubble
+          }
+          showEventModal={this.showEventModal}
+          uid={this.props.uid}
+          convertTime={this.convertTime}
+          respondToInvitation={this.respondToInvitation}
+          eventID={eventID}
+          item={item}
+          convertDate={convertDate}
+        />
+      );
+    }
+  };
+
+  renderFooter = () => {
+    return (
+      <View style={{ height: 10 }}></View>
+    )
   }
 
-
   render() {
-    let { height } = Dimensions.get('window');
+    let height = Dimensions.get("window").height;
+
     return (
-      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={Platform.OS === 'ios' ? 85 : 0} style={{ flex: 1 }}>
-        <SafeAreaView>
+      <KeyboardAvoidingView
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === "ios" ? 87 : -300}
+        style={{ flex: 1 }}
+      >
+        <SafeAreaView style={{ flex: 1 }}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.inner}>
             <FlatList
               ref="messageList"
               onContentSizeChange={this.scrollToBottom}
-              style={{padding: 10, height: height * 0.8}}
+              style={{
+                padding: 10,
+                height: height,
+                backgroundColor: theme.colors.light_chat_background
+              }}
               data={this.props.conversation.slice()}
               renderItem={this.renderRow}
               keyExtractor={(item, index) => index.toString()}
+              ListFooterComponent={this.renderFooter}
             />
-            <View style={styles.chatBox}>
-              <TextInput
-                style={styles.chatInput}
-                value={this.state.textMessage}
-                onChangeText={this.handleChange("textMessage")}
-                placeholder="Write a message"
-              />
-              <TouchableOpacity onPress={this.sendMessage}>
-                <Text style={styles.sendBtn}>Send</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={{flex: 1}}/>
-          </View>
           </TouchableWithoutFeedback>
+          <View
+            style={[
+              styles.chatBox,
+              {
+                zIndex: 1,
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: "lightgrey",
+                bottom: 0,
+                backgroundColor: "white"
+              }
+            ]}
+          >
+            <TextInput
+              style={styles.chatInput}
+              value={this.state.textMessage}
+              onChangeText={this.handleChange("textMessage")}
+              placeholder="Message"
+            />
+            <TouchableOpacity
+              onPress={this.sendMessage}
+              style={{ justifyContent: "center" }}
+            >
+              <MyIcon
+                name="send"
+                type="material"
+                size={28}
+                color={cliqueBlue}
+              />
+            </TouchableOpacity>
+          </View>
+          <EventModal groupID={this.state.groupID} />
         </SafeAreaView>
-      </KeyboardAvoidingView>
+      </KeyboardAvoidingView >
     );
   }
 }
@@ -279,108 +394,68 @@ class ChatScreen extends Component {
 const mapStateToProps = (state, ownProps) => {
   const { groupID } = ownProps.navigation.getParam("group");
   const stateOfGroup = state.messagesReducer[groupID] || {};
+  const username = state.authReducer.user.displayName;
   return {
     uid: state.authReducer.user.uid,
     conversation: stateOfGroup.messages || [],
-  }
-}
+    username
+  };
+};
 
 export default connect(mapStateToProps)(ChatScreen);
 
 const styles = StyleSheet.create({
-  inner:{
-    justifyContent: "flex-end",
+  inner: {
+    justifyContent: "flex-end"
   },
-  chatBox:{
-    flexDirection: "row", 
-    alignItems: "center" ,
+  chatBox: {
+    flexDirection: "row"
+    // alignItems: "center"
   },
   chatInput: {
-    borderWidth: 1,
-    borderRadius: 7,
-    width: '80%',
+    width: "90%",
     padding: 10,
-    margin: 8,
-    color: 'black',
-    borderColor: 'black'
-  },
-  sendBtn: {
-    color: '#1d73d6',
-    fontSize: 20,
+    color: "black",
+    bottom: 0,
+    fontSize: 16,
+    backgroundColor: 'transparent'
   },
   yourMessageBubble: {
-    flexDirection:"row",
-    justifyContent: 'space-between',
-    width:"auto",
-    alignSelf: 'flex-start',
-    backgroundColor: '#134782',
-    borderRadius: 20,
+    justifyContent: "space-between",
+    width: "auto",
+    alignSelf: "flex-start",
+    backgroundColor: theme.colors.light_chat_yours,
+    borderRadius: 10,
     marginBottom: 8,
     paddingLeft: 5,
-    marginRight: 40,
+    maxWidth: "100%",
+    marginRight: 80
   },
   myMessageBubble: {
-    flexDirection:"row",
-    justifyContent: 'space-between',
-    width:"auto",
-    alignSelf: 'flex-end',
-    backgroundColor: '#3a8cbc',
-    borderRadius: 20,
+    justifyContent: "space-between",
+    width: "auto",
+    alignSelf: "flex-end",
+    backgroundColor: theme.colors.light_chat_mine,
+    borderRadius: 10,
     marginBottom: 8,
     paddingLeft: 5,
-    marginLeft: 40,
+    marginLeft: 80,
+    maxWidth: "100%"
   },
   yourEventBubble: {
-    alignSelf: 'flex-start', 
-    borderRadius: 20, 
-    marginBottom: 8, 
-    backgroundColor:"#134782", 
-    width:"auto",
+    alignSelf: "flex-start",
+    borderRadius: 20,
+    marginBottom: 5,
+    backgroundColor: theme.colors.light_chat_yours,
+    width: "auto",
     marginRight: 40
   },
   myEventBubble: {
-    alignSelf: 'flex-end', 
-    borderRadius: 20, 
-    marginBottom: 8, 
-    backgroundColor:"#3a8cbc", 
-    width:"auto",
+    alignSelf: "flex-end",
+    borderRadius: 20,
+    marginBottom: 5,
+    backgroundColor: theme.colors.light_chat_mine,
+    width: "auto",
     marginLeft: 50
-  },
-  invitationButton: {
-    textAlign: "center", 
-    color: "#fff", 
-    fontSize: 15,
-    fontWeight: "bold"
-  },
-  eventDetails: {
-    color: '#fff', 
-    padding: 7, 
-    fontSize: 16, 
-    textDecorationLine: 'underline', 
-    flex: 1
-  },
-  eventBubbleContent:{
-    flexWrap: 'nowrap',
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingLeft: 5,
-  },
-  eventBubbleButtons: {
-    height: 40, 
-    flexDirection: "row", 
-    justifyContent: "center", 
-    alignItems: "center"
-  },
-  acceptButton: {
-    backgroundColor:"#2cb768",
-    height: 40,
-    justifyContent: "center",
-    borderBottomLeftRadius: 20
-  },
-  rejectButton: {
-    backgroundColor:"#c13f3f",
-    height: 40,
-    justifyContent: "center",
-    borderBottomRightRadius: 20
-  },
-})
+  }
+});

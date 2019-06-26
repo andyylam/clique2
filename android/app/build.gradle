@@ -144,6 +144,8 @@ android {
 }
 
 dependencies {
+    implementation project(':react-native-fast-image')
+    implementation project(':@react-native-community_netinfo')
     implementation project(':@react-native-community_async-storage')
     implementation project(':react-native-image-resizer')
     implementation project(':rn-fetch-blob')
@@ -227,5 +229,5 @@ task copyDownloadableDepsToLibs(type: Copy) {
     into 'libs'
 }
 
-apply plugin: 'com.google.gms.google-services'
 GoogleServicesPlugin.config.disableVersionCheck = true
+apply plugin: 'com.google.gms.google-services'
