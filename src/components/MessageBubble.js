@@ -4,20 +4,21 @@ import Text from "./Text";
 import theme from "../assets/theme";
 
 class MessageBubble extends React.Component {
+
   render() {
     return (
-      <View style={[this.props.style, { flexDirection: "row" }]}>
+      <View style={[this.props.style, { flexDirection: "row", marginTop: this.props.item.firstMsgBySender ? 2 : 0 }]}>
         <View>
-          {this.props.item.sender !== this.props.uid && (
+          {this.props.item.sender !== this.props.uid && this.props.item.firstMsgBySender && (
             <View
               style={{
-                paddingLeft: 7,
+                paddingLeft: 5,
                 paddingTop: 3,
                 flexDirection: "row",
                 justifyContent: "space-between"
               }}
             >
-              <Text header semibold color={theme.colors.light_chat_username}>
+              <Text header semibold color={this.props.usernameColor}>
                 {this.props.item.username}
               </Text>
             </View>
@@ -25,11 +26,9 @@ class MessageBubble extends React.Component {
           <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
             <Text
               header
-              black
+              color={this.props.textColor}
               style={{
-                paddingTop: 4,
-                paddingBottom: 7,
-                paddingHorizontal: 7,
+                padding: 5,
                 width: "auto",
                 maxWidth: this.props.maxWidth * 0.85
               }}
@@ -40,9 +39,9 @@ class MessageBubble extends React.Component {
         </View>
         <View style={{ alignItems: "flex-end", justifyContent: "flex-end" }}>
           <Text
-            black
+            color={this.props.textColor}
             style={{
-              paddingBottom: 7,
+              paddingBottom: 5,
               paddingRight: 10,
               fontSize: 10
             }}

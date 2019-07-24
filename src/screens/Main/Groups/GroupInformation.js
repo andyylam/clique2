@@ -5,10 +5,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   Dimensions,
-  Alert
+  Alert,
+  StatusBar
 } from "react-native";
 import SwipeOut from "react-native-swipeout";
-
 import GroupPicture from "../../../components/GroupPicture";
 import firebase from "react-native-firebase";
 import Text from "../../../components/Text";
@@ -22,35 +22,39 @@ import { removeGroupMessages } from "../../../store/actions/messages";
 class GroupInformation extends React.Component {
   static navigationOptions = ({ navigation }) => {
     const group = navigation.getParam("group");
-
+    navigation.goBack = () => navigation.navigate("Chat", {
+      group,
+      image: navigation.getParam("image")
+    });
     return {
+      gesturesEnabled: false,
       headerTintColor: "#fff",
       headerStyle: {
         borderBottomColor: "transparent",
-        height: Dimensions.get("window").height * 0.17,
-        backgroundColor: theme.colors.cliqueBlue
       },
-      headerTitle: (
-        <View
-          style={{
-            flex: 1,
-            justifyContent: "flex-start",
-            flexDirection: "row",
-            alignItems: "center"
-          }}
-        >
-          <GroupPicture value={0.2} source={{ uri: group.photoURL }} />
-          <Text white medium h2 style={{ paddingLeft: "5%" }}>
-            {group.groupName}
-          </Text>
-        </View>
-      ),
       headerLeft: (
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={() => {
+            navigation.navigate("Chat", {
+              group,
+              image: { uri: group.photoURL }
+            });;
+          }}
           style={{ alignSelf: "flex-start", paddingTop: 10, paddingLeft: 10 }}
         >
           <MyIcon name="arrow-back" color="white" size={25} type="material" />
+        </TouchableOpacity>
+      ),
+      headerRight: (
+        <TouchableOpacity
+          onPress={() => navigation.navigate("GroupDetails", {
+            title: "Edit Group",
+            type: "edit",
+            groupID: group.groupID,
+          })}
+          style={{ paddingTop: 12, paddingRight: 10, alignSelf: "flex-start" }}
+        >
+          <Text white style={{ fontSize: 20 }}>Edit</Text>
         </TouchableOpacity>
       )
     };
@@ -117,7 +121,7 @@ class GroupInformation extends React.Component {
         }
       ],
       rowId: item.id,
-      backgroundColor: "#fff"
+      backgroundColor: this.props.colors.whiteBlack
     };
     return (
       <SwipeOut {...swipeSettings}>
@@ -127,14 +131,14 @@ class GroupInformation extends React.Component {
             width: "100%",
             paddingVertical: 5,
             alignItems: "center",
-            borderBottomColor: "lightgrey",
+            borderBottomColor: this.props.colors.hairlineColor,
             borderBottomWidth: StyleSheet.hairlineWidth
           }}
         >
           <View style={{ paddingLeft: 10 }}>
             <GroupPicture source={{ uri: item.photoURL }} value={0.1} />
           </View>
-          <Text h4 style={{ paddingLeft: "5%" }}>
+          <Text h2 style={{ paddingLeft: "5%", color: this.props.colors.textColor }}>
             {item.displayName}
           </Text>
         </View>
@@ -142,19 +146,28 @@ class GroupInformation extends React.Component {
     );
   };
 
+  removeEventsFromUser = (uid, groupID) => {
+    return firebase
+      .database()
+      .ref(`users/${uid}/attending/${groupID}`)
+      .remove();
+  };
+
   remove = (uid, groupID, leave) => {
     this.props
-      .removeUser(uid, groupID)
+      .removeUser(uid, groupID, leave)
       .then(() => {
-        this.populateState();
-      })
-      .then(() => {
-        if (leave) {
+        if (!leave) {
+          this.populateState();
           this.props.removeGroup(groupID);
+        } else {
           this.props.removeGroupEvents(groupID);
           this.props.removeGroupMessages(groupID);
-          this.props.navigation.navigate("Main");
         }
+      })
+      .then(() => {
+        this.removeEventsFromUser(uid, groupID);
+        if (leave) this.props.navigation.navigate("Main");
       });
   };
 
@@ -164,28 +177,27 @@ class GroupInformation extends React.Component {
         onPress={() =>
           this.props.navigation.navigate("AddMembers", {
             group: this.props.navigation.getParam("group"),
-            populateState: this.populateState
+            populateState: this.populateState,
           })
         }
         style={{
           flexDirection: "row",
           alignItems: "center",
-          borderBottomColor: "lightgrey",
+          borderBottomColor: this.props.colors.hairlineColor,
           borderBottomWidth: StyleSheet.hairlineWidth,
-          paddingBottom: "5%",
-          paddingTop: "3%",
-          paddingHorizontal: "5%"
+          justifyContent: "center",
+          paddingVertical: 20
         }}
       >
         <MyIcon
           name="person-add"
           size={30}
-          color={theme.colors.light_chat_username}
+          color="#1965BC"
           type="material"
         />
         <Text
           h3
-          color={theme.colors.light_chat_username}
+          color="#1965BC"
           style={{ paddingLeft: "3%" }}
         >
           Add Member
@@ -208,8 +220,24 @@ class GroupInformation extends React.Component {
   };
 
   render() {
+    const group = this.props.navigation.getParam("group");
+
     return (
-      <View style={{ display: "flex", height: "100%" }}>
+      <View style={{ display: "flex", height: "100%", backgroundColor: this.props.colors.whiteBlack }}>
+        <StatusBar barStyle="light-content" />
+        <View
+          style={{
+            justifyContent: "center",
+            alignItems: "center",
+            height: "auto",
+            backgroundColor: this.props.colors.headerColor
+          }}
+        >
+          <GroupPicture value={0.2} source={{ uri: group.photoURL }} />
+          <Text white medium h2 style={{ marginVertical: 20 }}>
+            {group.groupName}
+          </Text>
+        </View>
         {this.renderFlatList()}
       </View>
     );
@@ -219,8 +247,8 @@ class GroupInformation extends React.Component {
 const mapStateToProps = (state, ownProps) => {
   return {
     self: state.authReducer.user,
-    group:
-      state.groupsReducer.groups[ownProps.navigation.getParam("group").groupID]
+    group: state.groupsReducer.groups[ownProps.navigation.getParam("group").groupID],
+    colors: state.theme.colors
   };
 };
 

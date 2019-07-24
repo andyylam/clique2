@@ -20,7 +20,10 @@ import { cliqueBlue, getDate, getDay, getTime } from "../../assets/constants";
 import firebase from "react-native-firebase";
 import Text from "../../components/Text";
 import MyIcon from "../../components/MyIcon";
-import { fetchPersonalEvents, fetchAllEvents } from "../../store/actions/calendar";
+import {
+  fetchPersonalEvents,
+  fetchAllEvents
+} from "../../store/actions/calendar";
 
 class EventModal extends Component {
   constructor(props) {
@@ -28,6 +31,7 @@ class EventModal extends Component {
     this.hideModal = this.hideModal.bind(this);
     this.respondToInvitation = this.respondToInvitation.bind(this);
     this.handleEditButtonPress = this.handleEditButtonPress.bind(this);
+    this.sendSystemMessage = this.sendSystemMessage.bind(this);
   }
 
   hideModal() {
@@ -37,11 +41,38 @@ class EventModal extends Component {
   renderRow = ({ item }) => {
     return (
       <View style={{ flex: 1, height: 30, justifyContent: "center" }}>
-        <Text style={{ textAlign: "center", fontSize: 18, color: cliqueBlue }}>
+        <Text
+          style={{
+            textAlign: "center",
+            fontSize: 18,
+            color: this.props.colors.eventResponders
+          }}
+        >
           @{item}
         </Text>
       </View>
     );
+  };
+
+  sendSystemMessage = text => {
+    const groupID = this.props.groupID;
+    const msgID = firebase
+      .database()
+      .ref("messages")
+      .child(`${groupID}`)
+      .push().key;
+    const message = {
+      messageType: "system",
+      message: text,
+      timestamp: firebase.database.ServerValue.TIMESTAMP,
+      sender: ""
+    };
+    firebase
+      .database()
+      .ref("messages")
+      .child(`${groupID}`)
+      .child(`${msgID}`)
+      .set(message);
   };
 
   respondToInvitation = (eventID, response) => async () => {
@@ -68,6 +99,8 @@ class EventModal extends Component {
       name => name !== this.props.displayName
     );
 
+    const db = firebase.database();
+
     let updatedEvent;
     if (response) {
       updatedEvent = {
@@ -76,15 +109,16 @@ class EventModal extends Component {
         notAttending,
         noResponse
       };
-      firebase
-        .database()
-        .ref(`users/${this.props.uid}/attending/${this.props.event.groupID}/${event.eventID}`)
-        .set(true)
-      firebase
-        .database()
-        .ref(`users/${this.props.uid}/notAttending/${this.props.event.groupID}/${event.eventID}`)
-        .remove()
-      this.props.dispatch(fetchPersonalEvents(this.props.uid))
+      db.ref(
+        `users/${this.props.uid}/attending/${groupID}/${event.eventID}`
+      ).set(true);
+      db.ref(
+        `users/${this.props.uid}/notAttending/${groupID}/${event.eventID}`
+      ).remove();
+      this.sendSystemMessage(
+        `${this.props.displayName} is attending ${event.title}!`
+      );
+      this.props.dispatch(fetchPersonalEvents(this.props.uid));
       attendingNames = [...attendingNames, this.props.displayName];
     } else {
       updatedEvent = {
@@ -93,30 +127,25 @@ class EventModal extends Component {
         noResponse,
         notAttending: [...notAttending, this.props.uid]
       };
-      firebase
-        .database()
-        .ref(`users/${this.props.uid}/notAttending/${this.props.event.groupID}/${event.eventID}`)
-        .set(true)
-      firebase
-        .database()
-        .ref(`users/${this.props.uid}/attending/${this.props.event.groupID}/${event.eventID}`)
-        .remove()
-      this.props.dispatch(fetchPersonalEvents(this.props.uid))
+      db.ref(
+        `users/${this.props.uid}/notAttending/${groupID}/${event.eventID}`
+      ).set(true);
+      db.ref(
+        `users/${this.props.uid}/attending/${groupID}/${event.eventID}`
+      ).remove();
+      this.sendSystemMessage(
+        `${this.props.displayName} is not attending ${event.title}!`
+      );
+      this.props.dispatch(fetchPersonalEvents(this.props.uid));
       notAttendingNames = [...notAttendingNames, this.props.displayName];
     }
-    // updates the group events 
-    this.props.dispatch(fetchAllEvents(this.props.uid))
-    firebase
-      .database()
-      .ref(`events/${groupID}/${eventID}`)
-      .set(updatedEvent);
+    // updates the group events
+    this.props.dispatch(fetchAllEvents(this.props.uid));
+    db.ref(`events/${groupID}/${eventID}`).set(updatedEvent);
 
     // Updates event in message the event is attached to
     const msgID = updatedEvent.msgID;
-    firebase
-      .database()
-      .ref(`messages/${groupID}/${msgID}/event`)
-      .set(updatedEvent);
+    db.ref(`messages/${groupID}/${msgID}/event`).set(updatedEvent);
 
     // Updates Event Modal
     this.props.dispatch(toggleEventModal(true, updatedEvent));
@@ -125,9 +154,9 @@ class EventModal extends Component {
   };
 
   handleEditButtonPress = () => {
-    (this.props.navigation || {}).navigate("CreateEvents", {
-      groupID: this.props.event.groupID
-    });
+    // (this.props.navigation || {}).navigate("CreateEvents", {
+    //   groupID: this.props.event.groupID
+    // });
   };
 
   renderTitle = () => {
@@ -140,8 +169,17 @@ class EventModal extends Component {
           marginBottom: 20
         }}
       >
-        <Text h1 center black medium>
+        <Text h1 center color={this.props.colors.textColor} medium>
           {(this.props.event || {}).title}
+        </Text>
+        <Text
+          h3
+          center
+          color={this.props.colors.textColor}
+          medium
+          style={{ marginTop: 10 }}
+        >
+          {this.props.groupName}
         </Text>
       </View>
     );
@@ -162,8 +200,6 @@ class EventModal extends Component {
       </View>
     );
   };
-
-  renderSameDate = date => { };
 
   renderDate = date => {
     return (
@@ -189,8 +225,9 @@ class EventModal extends Component {
 
   render() {
     if (Platform.OS === "android") {
-      if (this.props.modalVisibility) StatusBar.setBackgroundColor("white");
-      else StatusBar.setBackgroundColor(cliqueBlue);
+      if (this.props.modalVisibility)
+        StatusBar.setBackgroundColor(this.props.colors.lightMain);
+      else StatusBar.setBackgroundColor(this.props.colors.cliqueBlue);
     }
     return (
       <View style={{ flex: 1 }}>
@@ -201,7 +238,9 @@ class EventModal extends Component {
           onSwipeComplete={this.hideModal}
           style={{ margin: 0 }}
         >
-          <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+          <SafeAreaView
+            style={{ flex: 1, backgroundColor: this.props.colors.lightMain }}
+          >
             <View
               style={{
                 height: "5%",
@@ -210,17 +249,20 @@ class EventModal extends Component {
               }}
             >
               <TouchableOpacity
-                style={{ height: 50, width: 50, marginLeft: 8, flex: 1 }}
+                style={{
+                  height: 30,
+                  width: 30,
+                  position: "relative",
+                  marginLeft: 15,
+                  marginTop: 3
+                }}
                 onPress={this.hideModal}
               >
-                <Image
-                  source={require("../../assets/x.png")}
-                  style={{
-                    marginLeft: 13,
-                    marginTop: 10,
-                    height: 20,
-                    width: 20
-                  }}
+                <MyIcon
+                  type="material"
+                  name="clear"
+                  size={28}
+                  color={this.props.colors.pollTitle}
                 />
               </TouchableOpacity>
               <TouchableOpacity
@@ -355,13 +397,20 @@ class EventModal extends Component {
 }
 
 const mapStateToProps = state => {
+  const event = state.eventModalReducer.event || {};
+  const groupID = event.groupID || "";
+  const groupName = (state.groupsReducer.groups[groupID] || {}).groupName || "";
+
   return {
     modalVisibility: state.eventModalReducer.modalVisibility,
-    event: state.eventModalReducer.event || {},
+    event,
     attending: state.eventModalReducer.attending || [],
     notAttending: state.eventModalReducer.notAttending || [],
     uid: state.authReducer.user.uid,
-    displayName: state.authReducer.user.displayName
+    displayName: state.authReducer.user.displayName,
+    groupName,
+    groupID,
+    colors: state.theme.colors
   };
 };
 

@@ -1,7 +1,6 @@
 import React from "react";
 import {
   View,
-  Text,
   TouchableOpacity,
   FlatList,
   PermissionsAndroid,
@@ -19,6 +18,7 @@ import Spinner from "./Spinner";
 import GroupPicture from "./GroupPicture";
 
 class ContactsList extends React.Component {
+
   state = { contacts: [], count: 0, loading: true };
 
   askPermissionAndGetContacts() {
@@ -62,11 +62,10 @@ class ContactsList extends React.Component {
         throw err;
       }
       let dbRef = firebase.database().ref("phoneNumbers");
-      dbRef
-        .once("value")
-        .then(snapshot => {
-          this.setState(prevState => {
-            contacts = contacts.filter(contact => {
+      dbRef.once("value").then(snapshot => {
+        this.setState(prevState => {
+          contacts = contacts
+            .map(contact => {
               const contactPhoneNumbers = contact.phoneNumbers.map(
                 phoneNumber => phoneNumber.number
               );
@@ -74,40 +73,18 @@ class ContactsList extends React.Component {
                 if (
                   snapshot.child(`${phoneNumber}`.replace(/\s/g, "")).exists()
                 ) {
-                  return true;
+                  return snapshot.val()[phoneNumber.replace(/\s/g, "")];
                 }
               }
-              return false;
-            });
-
-            return {
-              ...prevState,
-              contacts
-            };
-          });
-        })
-        .then(() => {
-          for (let i = 0; i < this.state.contacts.length; i++) {
-            const number = this.state.contacts[i].phoneNumbers
-              .map(n => n.number)[0]
-              .replace(/\s/g, "");
-            firebase
-              .database()
-              .ref(`phoneNumbers/${number}/`)
-              .once("value")
-              .then(snapshot => {
-                this.setState(prevState => {
-                  const newContacts = [...prevState.contacts];
-                  newContacts[i].photoURL = snapshot.val().photoURL;
-                  newContacts[i].uid = snapshot.val().uid;
-                  return {
-                    ...prevState,
-                    contacts: newContacts
-                  };
-                });
-              });
-          }
+              return;
+            })
+            .filter(x => x);
+          return {
+            ...prevState,
+            contacts
+          };
         });
+      });
     });
 
     this.setState({ loading: false });
@@ -132,6 +109,7 @@ class ContactsList extends React.Component {
         title={props.label}
         value={props.user}
         callback={this.count}
+        textColor={this.props.colors.textColor}
       />
     );
   };
@@ -144,7 +122,7 @@ class ContactsList extends React.Component {
           width: "100%",
           paddingVertical: 5,
           alignItems: "center",
-          borderBottomColor: "lightgrey",
+          borderBottomColor: this.props.colors.hairlineColor,
           borderBottomWidth: StyleSheet.hairlineWidth
         }}
       >
@@ -152,14 +130,15 @@ class ContactsList extends React.Component {
           <GroupPicture source={{ uri: item.photoURL }} value={0.1} />
         </View>
         <Field
-          name={`contact${item.givenName}`}
+          name={`contact${item.displayName}`}
           component={this.renderCheckBox}
           user={item}
-          label={item.givenName + " " + item.familyName}
+          label={item.displayName}
         />
       </View>
     );
   };
+
   removeDuplicates = (groupUsers, contacts) => {
     let obj = {};
     for (let user in contacts) {
@@ -182,7 +161,7 @@ class ContactsList extends React.Component {
         onPress={this.props.handleSubmit(this.handleSubmit.bind(this))}
         style={{ position: "absolute", top: "90%", left: "80%" }}
       >
-        <ContinueButton name="arrow-forward" />
+        <ContinueButton name="arrow-forward" btnColor={this.props.colors.continueButton} />
       </TouchableOpacity>
     );
   };
@@ -200,7 +179,7 @@ class ContactsList extends React.Component {
         <FlatList
           data={contacts}
           renderItem={this.renderRow}
-          keyExtractor={item => item.recordID}
+          keyExtractor={item => item.uid}
         />
         {this.state.count > 0 ? this.renderButton() : null}
       </View>
@@ -209,7 +188,7 @@ class ContactsList extends React.Component {
 
   render() {
     return (
-      <View style={{ display: "flex", height: "100%" }}>
+      <View style={{ display: "flex", height: "100%", backgroundColor: this.props.colors.whiteBlack }}>
         {this.renderFlatList()}
         {this.state.loading && <Spinner />}
       </View>
@@ -217,8 +196,14 @@ class ContactsList extends React.Component {
   }
 }
 
+const mapStateToProps = state => {
+  return {
+    colors: state.theme.colors
+  }
+}
+
 let form = reduxForm({ form: "contactList" })(ContactsList);
 export default connect(
-  null,
+  mapStateToProps,
   { createGroup }
 )(form);

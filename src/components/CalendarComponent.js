@@ -37,6 +37,15 @@ class CalendarComponent extends React.Component {
     this.loadItems = this.loadItems.bind(this);
   }
 
+  // shouldComponentUpdate(nextProps) {
+  //   if (this.props.colors.whiteBlack !== nextProps.colors.whiteBlack) {
+  //     console.log("Inside shouldComponentUpdate");
+  //     this.forceUpdate(() => console.log("updated"));
+  //     return true;
+  //   }
+  //   return false;
+  // }
+
   renderButton = () => {
     if (!this.props.hasButton) {
       return <View />;
@@ -49,7 +58,7 @@ class CalendarComponent extends React.Component {
         }
         style={{ position: "absolute", top: "90%", left: "80%" }}
       >
-        <ContinueButton name="add" />
+        <ContinueButton name="add" btnColor={this.props.colors.continueButton} />
       </TouchableOpacity>
     );
   };
@@ -92,14 +101,23 @@ class CalendarComponent extends React.Component {
     const fromTime = new Date(item.event.from).toTimeString().slice(0, 5);
     const toTime = new Date(item.event.to).toTimeString().slice(0, 5);
     return (
-      <View style={[styles.item, { height: item.height }]}>
+      <View style={[styles.item, { height: item.height, backgroundColor: this.props.colors.lightMain }]}>
         <TouchableOpacity onPress={this.showEventModal(item.event)}>
-          <Text style={{ fontWeight: "500", fontSize: 16, marginBottom: 10 }}>
+          <Text style={{ fontWeight: "500", fontSize: 16, marginBottom: 10, color: this.props.colors.textColor }}>
             {item.event.title}
           </Text>
-          <Text>
-            {fromTime} - {toTime}
-          </Text>
+          <View style={{ flexDirection: "row", width: "100%" }}>
+            <View>
+              <Text style={{ color: this.props.colors.textColor, flex: 1 }}>
+                🕘 : {fromTime} - {toTime}
+              </Text>
+            </View>
+            <View>
+              <Text style={{ color: this.props.colors.textColor, flex: 1, marginLeft: 20 }}>
+                {item.event.location ? `📍: ${item.event.location}` : ""}
+              </Text>
+            </View>
+          </View>
         </TouchableOpacity>
       </View>
     );
@@ -129,7 +147,7 @@ class CalendarComponent extends React.Component {
   }
 
   rowHasChanged(r1, r2) {
-    return !(_.isEqual(r1, r2));
+    return !_.isEqual(r1, r2);
   }
 
   timeToString(time) {
@@ -155,10 +173,13 @@ class CalendarComponent extends React.Component {
   };
 
   render() {
+    const colors = this.props.colors;
+    console.log(this.props.agendaKey);
     return (
       <View>
         <View style={{ display: "flex", height: "100%" }}>
           <Agenda
+            key={this.props.agendaKey}
             items={this.props.events}
             renderItem={this.renderItem.bind(this)}
             renderEmptyDate={this.renderEmptyDate.bind(this)}
@@ -166,6 +187,18 @@ class CalendarComponent extends React.Component {
             onDayPress={day => this.dayPress(day)}
             loadItemsForMonth={this.props.loadItems}
             renderEmptyData={this.renderEmptyData.bind(this)}
+            theme={{
+              agendaTodayColor: colors.dotColor,
+              todayTextColor: colors.dotColor,
+              selectedDayBackgroundColor: colors.dotColor,
+              backgroundColor: colors.agendaBackground,
+              calendarBackground: colors.lightMain,
+              textSectionTitleColor: colors.textSectionTitleColor,
+              dayTextColor: colors.dayTextColor,
+              textDisabledColor: colors.textDisabledColor,
+              dotColor: colors.dotColor,
+              monthTextColor: colors.dayTextColor,
+            }}
           />
           {this.renderButton()}
         </View>
@@ -195,14 +228,18 @@ const styles = StyleSheet.create({
 const mapStateToProps = (state, ownProps) => {
   let sortedEventsArr = [];
 
-  if (ownProps.personal) { //personal calendar
-    sortedEventsArr = state.calendar.personalEvents.sort((a, b) => {
+  if (ownProps.personal) {
+    //personal calendar
+    sortedEventsArr = (state.calendar.personalEvents || []).sort((a, b) => {
       return new Date(a.from).getTime() - new Date(b.from).getTime();
     });
-  } else { // group calendar
-    sortedEventsArr = _.values(state.calendar.events[ownProps.groupID]).sort((a, b) => {
-      return new Date(a.from).getTime() - new Date(b.from).getTime();
-    });
+  } else {
+    // group calendar
+    sortedEventsArr = _.values(state.calendar.events[ownProps.groupID]).sort(
+      (a, b) => {
+        return new Date(a.from).getTime() - new Date(b.from).getTime();
+      }
+    );
   }
 
   const events = {};
@@ -218,8 +255,9 @@ const mapStateToProps = (state, ownProps) => {
   return {
     events,
     loadItems: () => this.events,
-    modalVisibility: state.eventModalReducer.modalVisibility
-  }
+    modalVisibility: state.eventModalReducer.modalVisibility,
+    colors: state.theme.colors
+  };
 
   // let events = {};
   // if (!ownProps.groupID) {
@@ -239,6 +277,4 @@ const mapStateToProps = (state, ownProps) => {
   // return { events };
 };
 
-export default connect(
-  mapStateToProps
-)(CalendarComponent);
+export default connect(mapStateToProps)(CalendarComponent);

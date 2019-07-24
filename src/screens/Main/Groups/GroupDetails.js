@@ -4,14 +4,14 @@ import {
   TextInput,
   StyleSheet,
   TouchableOpacity,
-  Dimensions
+  Dimensions,
+  StatusBar
 } from "react-native";
 import { connect } from "react-redux";
 import { Field, reduxForm } from "redux-form";
-
 import Text from "../../../components/Text";
 import ContinueButton from "../../../components/ContinueButton";
-import { createGroup } from "../../../store/actions/groups";
+import { createGroup, editGroup } from "../../../store/actions/groups";
 import defaultPicture from "../../../assets/default_profile.png";
 import ImagePicker from "../../../components/ImagePickerComponent";
 import HeaderTitle from "../../../components/HeaderTitle";
@@ -20,19 +20,30 @@ import Spinner from "../../../components/Spinner";
 const required = value => (value ? undefined : "Required");
 
 class GroupDetails extends React.Component {
-  static navigationOptions = () => {
+  constructor(props) {
+    super(props);
+    this.state = {
+      loading: false,
+      groupName: this.props.navigation.getParam("type") === "create" ? "" : this.props.group.groupName
+    }
+    this.handleSubmitCreate = this.handleSubmitCreate.bind(this);
+  }
+
+  static navigationOptions = ({ navigation }) => {
     return {
       headerTitle: (
         <View style={{ bottom: 5 }}>
-          <HeaderTitle title="New Group" />
+          <HeaderTitle title={navigation.getParam("title")} />
         </View>
-      )
+      ),
+      headerTintColor: "#fff",
+      headerStyle: {
+        borderBottomColor: "transparent",
+      },
     };
   };
 
-  state = { loading: false };
-
-  handleSubmit = values => {
+  handleSubmitCreate = values => {
     this.setState({ loading: true });
     this.props
       .dispatch(
@@ -41,6 +52,7 @@ class GroupDetails extends React.Component {
           values.grouppicture.uri,
           values.grouppicture.fileName.split(".")[1],
           this.props.user.uid,
+          this.props.user.displayName,
           "This is a new clique!",
           Object.values(this.props.navigation.getParam("users"))
         )
@@ -50,12 +62,31 @@ class GroupDetails extends React.Component {
       });
   };
 
+  handleSubmitEdit = values => {
+    console.log(values);
+    this.setState({ loading: true });
+    this.props
+      .dispatch(
+        editGroup(
+          this.props.navigation.getParam("groupID"),
+          (values.groupname || this.state.groupName),
+          ((values.grouppicture || {}).uri || this.props.group.photoURL),
+        )
+      )
+      .then(group => {
+        this.props.navigation.navigate("GroupInformation", {
+          group,
+          image: { uri: group.photoURL }
+        })
+      });
+  };
+
   renderImagePicker = props => {
     return (
       <ImagePicker
         width={Dimensions.get("window").width}
         {...props.input}
-        value={defaultPicture}
+        value={this.props.navigation.getParam("type") === "create" ? defaultPicture : { uri: this.props.group.photoURL }}
       />
     );
   };
@@ -64,45 +95,51 @@ class GroupDetails extends React.Component {
     return (
       <TextInput
         {...input}
-        style={[styles.textInput, { marginTop: 5 }]}
+        keyboardAppearance={this.props.colors.keyboard}
+        value={this.state.groupName}
+        onChangeText={text => this.setState({ groupName: text })}
+        style={[styles.textInput, { marginTop: 5, color: this.props.colors.textColor }]}
         placeholder={label}
+        placeholderTextColor={this.props.colors.placeholderColor}
+        defaultValue={this.props.navigation.getParam("type") === "create" ? "" : this.props.group.groupName}
       />
     );
   };
 
-  renderGroupPicture = () => {
+  render() {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: this.props.colors.whiteBlack }]}>
+        <StatusBar barStyle="light-content" />
         <View style={{ marginTop: "15%" }}>
           <Text body grey style={styles.text}>
             Enter your group name and group picture!
           </Text>
           <Field
+            autoCapitalize="sentences"
             name="grouppicture"
             component={this.renderImagePicker}
-            validate={required}
+            validate={this.props.navigation.getParam("type") === "create" ? required : null}
           />
           <Field
+            autoCapitalize="sentences"
             name="groupname"
             component={this.renderInput}
             label="Enter group name"
-            validate={required}
+            validate={this.props.navigation.getParam("type") === "create" ? required : null}
+            value={this.state.groupName}
+            onChange={text => this.setState({ groupName: text })}
           />
         </View>
         <TouchableOpacity
           title="Create"
-          onPress={this.props.handleSubmit(this.handleSubmit.bind(this))}
+          onPress={this.props.handleSubmit(this.props.navigation.getParam("type") === "create" ? this.handleSubmitCreate : this.handleSubmitEdit)}
           style={{ position: "absolute", top: "90%", left: "80%" }}
         >
-          <ContinueButton name="arrow-forward" />
+          <ContinueButton name="arrow-forward" btnColor={this.props.colors.continueButton} />
         </TouchableOpacity>
         {this.state.loading && <Spinner />}
       </View>
     );
-  };
-
-  render() {
-    return this.renderGroupPicture();
   }
 }
 
@@ -127,8 +164,12 @@ const styles = StyleSheet.create({
   }
 });
 
-const mapStateToProps = state => {
-  return { user: state.authReducer.user };
+const mapStateToProps = (state, ownProps) => {
+  return {
+    user: state.authReducer.user,
+    group: state.groupsReducer.groups[ownProps.navigation.getParam("groupID")] || {},
+    colors: state.theme.colors
+  };
 };
 
 let form = reduxForm({ form: "groupDetails" })(GroupDetails);

@@ -3,17 +3,19 @@ import { View, Text } from "react-native";
 import ContactsList from "../../../components/ContactsList";
 import { addMembers } from "../../../store/actions/groups";
 import { connect } from "react-redux";
-import firebase from "react-native-firebase";
 
 class AddMembers extends React.Component {
-  static navigationOptions = () => {
+  static navigationOptions = ({ navigation }) => {
     return {
       headerTintColor: "#fff",
       headerTitle: (
         <View style={{ bottom: 5, justifyContent: "center" }}>
           <Text style={{ fontSize: 20, color: "white" }}>New members</Text>
         </View>
-      )
+      ),
+      headerStyle: {
+        borderBottomColor: "transparent"
+      }
     };
   };
 

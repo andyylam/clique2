@@ -7,28 +7,105 @@ import Input from "../../components/Input";
 
 import { connect } from "react-redux";
 import { setUserDetails } from "../../store/actions/auth";
+import { fetchGroups } from "../../store/actions/groups";
+import {
+  fetchAllEvents,
+  fetchPersonalEvents
+} from "../../store/actions/calendar";
+import { populateGroups } from "../../store/actions/messageCounter";
 import firebase from "react-native-firebase";
 import cliqueBlue from "../../assets/constants";
 import theme from "../../assets/theme";
 import Spinner from "../../components/Spinner";
-
+import NetInfo from "@react-native-community/netinfo";
+import LoadingView from "../../components/LoadingView";
 import icon from "../../assets/icon.png";
 
 class Auth extends Component {
   constructor(props) {
     super(props);
-    this.unsubscribe = null;
     this.state = {
       message: "",
       codeInput: "",
       phoneNumber: "+65", // need to change
       confirmResult: null,
-      loading: false
+      loading: false,
+      splash: true
     };
+
+    this.unsubscribe = firebase.auth().onAuthStateChanged(user => {
+      this.onTokenRefreshListener = firebase
+        .messaging()
+        .onTokenRefresh(fcmToken => {
+          this.getToken(firebase.auth().currentUser.uid, fcmToken);
+        });
+      if (user) {
+        if (user.displayName && user.photoURL) {
+          NetInfo.fetch()
+            .then(state => {
+              if (state.isConnected) {
+                this.props.setUserDetails(user);
+                this.props
+                  .fetchGroups()
+                  .then(() => this.props.fetchAllEvents(user.uid))
+                  .then(() => this.props.fetchPersonalEvents(user.uid))
+                  .then(() => this.checkPermission(user.uid))
+                  .then(() => Promise.resolve());
+              }
+            })
+            .then(() => {
+              this.props.navigation.navigate("App");
+            });
+        } else {
+          // get user to set username and profile picture
+          this.props.navigation.navigate("UserDetails");
+        }
+      } else {
+        this.setState({ splash: false });
+      }
+    });
+  }
+
+  checkPermission(uid) {
+    return firebase
+      .messaging()
+      .hasPermission()
+      .then(enabled => {
+        if (enabled) {
+          console.log("Permission granted");
+          this.getToken(uid);
+        } else {
+          console.log("Request Permission");
+          this.requestPermission(uid);
+        }
+      });
+  }
+
+  requestPermission() {
+    firebase
+      .messaging()
+      .requestPermission()
+      .then(() => {
+        this.getToken(uid);
+      })
+      .catch(error => {
+        console.log("permission rejected");
+      });
+  }
+
+  async getToken(uid, token) {
+    if (!token) {
+      fcmToken = await firebase.messaging().getToken();
+    }
+    return firebase
+      .database()
+      .ref(`users/${uid}/notificationToken`)
+      .set(token || fcmToken);
   }
 
   componentWillUnmount() {
-    if (this.unsubscribe) this.unsubscribe();
+    this.unsubscribe();
+    this.onTokenRefreshListener();
   }
 
   signIn = () => {
@@ -58,19 +135,15 @@ class Auth extends Component {
       confirmResult
         .confirm(codeInput)
         .then(user => {
-          const ref = firebase.database().ref("users");
-          ref.on(
-            "value",
-            snapshot => {
+          firebase
+            .database()
+            .ref("users")
+            .once("value", snapshot => {
               this.setState({ loading: false });
               this.props.navigation.navigate(
                 snapshot.val()[user._user.uid] ? "App" : "UserDetails"
               );
-            },
-            err => {
-              console.log("the read failed " + err.code);
-            }
-          );
+            });
         })
         .catch(error => {
           this.setState({ message: `Code Confirm Error: ${error.message}` });
@@ -190,18 +263,10 @@ class Auth extends Component {
         <View>
           {this.renderPhoneNumberInput()}
           {this.renderMessage()}
-          {this.state.loading && !this.state.message && <Spinner />}
         </View>
       );
     } else if (!user && confirmResult) {
-      currentRender = (
-        <View>
-          {this.renderVerificationCodeInput()}
-          {this.state.loading && !this.state.message && <Spinner />}
-        </View>
-      );
-    } else {
-      this.props.navigation.navigate("UserDetails");
+      currentRender = <View>{this.renderVerificationCodeInput()}</View>;
     }
 
     return (
@@ -211,6 +276,8 @@ class Auth extends Component {
         }}
       >
         {currentRender}
+        {this.state.loading && !this.state.message && <Spinner />}
+        {this.state.splash && <LoadingView />}
       </SafeAreaView>
     );
   }
@@ -248,5 +315,11 @@ const styles = StyleSheet.create({
 
 export default connect(
   mapStateToProps,
-  { setUserDetails }
+  {
+    setUserDetails,
+    fetchGroups,
+    fetchAllEvents,
+    populateGroups,
+    fetchPersonalEvents
+  }
 )(Auth);

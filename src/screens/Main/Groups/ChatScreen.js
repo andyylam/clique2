@@ -9,9 +9,9 @@ import {
   Platform,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  SafeAreaView
+  SafeAreaView,
+  StatusBar
 } from "react-native";
-import { FlatList } from "react-native-gesture-handler";
 import {
   toggleEventModal,
   populateAttending,
@@ -19,17 +19,24 @@ import {
 } from "../../../store/actions/eventModal";
 import { connect } from "react-redux";
 import { fetchConversation } from "../../../store/actions/messages";
-import { convertDate, cliqueBlue } from "../../../assets/constants";
+import { convertDate } from "../../../assets/constants";
 import firebase from "react-native-firebase";
 import MyIcon from "../../../components/MyIcon";
 import EventModal from "../EventModal";
-import { sortBy, values } from "lodash";
+import { values } from "lodash";
 import GroupPicture from "../../../components/GroupPicture";
 import Text from "../../../components/Text";
 import EventBubble from "../../../components/EventBubble";
 import MessageBubble from "../../../components/MessageBubble";
-import theme from "../../../assets/theme";
+import PollModal from "../../../components/PollModal";
 import { fetchPersonalEvents } from "../../../store/actions/calendar";
+import { KeyboardAwareFlatList } from "react-native-keyboard-aware-scroll-view";
+import SystemMessageBubble from "../../../components/SystemMessageBubble";
+import { getDate } from "../../../assets/constants";
+import { FlatList } from "react-native-gesture-handler";
+import PollMessageBubble from "../../../components/PollMessageBubble";
+import { setToZero } from "../../../store/actions/messageCounter";
+import ButtonsModal from "../../../components/ButtonsModal";
 
 class ChatScreen extends Component {
   constructor(props) {
@@ -39,18 +46,25 @@ class ChatScreen extends Component {
       groupID: this.props.navigation.getParam("group").groupID,
       textMessage: "",
       dayOfLastMsg: new Date().getDay(),
-      dateOfLastMsg: new Date().getDate()
+      dateOfLastMsg: new Date().getDate(),
+      numOfVisibleMsg: 40,
+      isRefreshing: false,
+      visible: false,
+      heightOfInput: 0,
     };
     this.convertTime = this.convertTime.bind(this);
     this.sendMessage = this.sendMessage.bind(this);
     this.handleChange = this.handleChange.bind(this);
     this.showEventModal = this.showEventModal.bind(this);
-    // this.sameDay = this.sameDay.bind(this);
+    this.sendSystemMessage = this.sendSystemMessage.bind(this);
+    this.increaseNumOfVisibleMsg = this.increaseNumOfVisibleMsg.bind(this);
+    // this.scrollToBottom = this.scrollToBottom.bind(this);
   }
 
   messagesRef = firebase.database().ref("messages");
 
   static navigationOptions = ({ navigation }) => {
+    const group = navigation.getParam("group");
     return {
       headerTintColor: "#fff",
       headerTitle: (
@@ -64,7 +78,7 @@ class ChatScreen extends Component {
           }}
           onPress={() =>
             navigation.navigate("GroupInformation", {
-              group: navigation.getParam("group")
+              group
             })
           }
         >
@@ -82,7 +96,7 @@ class ChatScreen extends Component {
               textAlignVertical: "center"
             }}
           >
-            {navigation.getParam("group").groupName}
+            {group.groupName}
           </Text>
         </TouchableOpacity>
       ),
@@ -90,7 +104,7 @@ class ChatScreen extends Component {
         <TouchableOpacity
           onPress={() =>
             navigation.navigate("GroupCalendar", {
-              groupID: navigation.getParam("group").groupID,
+              groupID: group.groupID,
               title: "Group Calendar"
             })
           }
@@ -103,34 +117,50 @@ class ChatScreen extends Component {
             style={{ marginRight: 20 }}
           />
         </TouchableOpacity>
-      )
+      ),
+      headerStyle: {
+        borderBottomColor: "transparent"
+      }
     };
   };
+
+  componentDidMount() {
+    this.props.navigation.setParams({
+      groupName: this.props.group.groupName
+    });
+    this.props.dispatch(setToZero(this.state.groupID));
+    firebase
+      .database()
+      .ref(`groups/${this.state.groupID}`)
+      .on("child_changed", snapshot => {
+        this.props.dispatch(setToZero(this.state.groupID));
+      });
+  }
 
   componentWillMount() {
     const groupID = this.state.groupID;
     this.messagesRef.child(`${groupID}`).on("value", snapshot => {
       this.props.dispatch(
-        fetchConversation(groupID, sortBy(values(snapshot.val()), "timestamp"))
+        fetchConversation(
+          groupID,
+          this.sort(values(snapshot.val())).slice(0, 40)
+        )
       );
     });
-    this.keyboardDidShowListener = Keyboard.addListener(
-      "keyboardDidShow",
-      this.scrollToBottom
-    );
-    this.keyboardDidHideListener = Keyboard.addListener(
-      "keyboardDidHide",
-      this.scrollToBottom
-    );
   }
 
   componentWillUnmount() {
-    this.keyboardDidShowListener.remove();
-    this.keyboardDidHideListener.remove();
+    this.setState({ visible: false });
   }
 
-  scrollToBottom = (contentHeight, contentWidth) => {
-    this.refs.messageList.scrollToEnd({ animated: false });
+  // scrollToBottom = (contentHeight, contentWidth) => {
+  //   this.refs.messageList.scrollToOffset({ offset: 0, animated: false });
+  // };
+
+  sort = messages => {
+    return messages.sort((message1, message2) => {
+      return message2.timestamp - message1.timestamp;
+    });
   };
 
   handleChange = key => val => {
@@ -147,16 +177,36 @@ class ChatScreen extends Component {
   };
 
   sendMessage = () => {
-    console.log("Sending Message");
     const groupID = this.state.groupID;
     if (this.state.textMessage.length > 0) {
+      const lastMessage = this.props.group.last_message;
+      const dateObj = new Date(lastMessage.timestamp);
+      const currentDate = new Date();
+      const diffDate =
+        dateObj.getDate() !== currentDate.getDate() ||
+        dateObj.getMonth() !== currentDate.getMonth();
+
+      if (diffDate || lastMessage.sender === "") {
+        const dateMsgID = this.messagesRef.child(`${groupID}`).push().key;
+        const dateMessage = {
+          messageType: "system",
+          message: `${getDate(currentDate)}`,
+          timestamp: firebase.database.ServerValue.TIMESTAMP,
+          sender: ""
+        };
+        this.messagesRef
+          .child(`${groupID}`)
+          .child(`${dateMsgID}`)
+          .set(dateMessage);
+      }
       const msgID = this.messagesRef.child(`${groupID}`).push().key;
       let message = {
         messageType: "text",
         message: this.state.textMessage,
         timestamp: firebase.database.ServerValue.TIMESTAMP,
         sender: this.state.uid,
-        username: this.props.username
+        username: this.props.username,
+        firstMsgBySender: lastMessage.sender !== this.props.uid
       };
       this.messagesRef
         .child(`${groupID}`)
@@ -167,8 +217,26 @@ class ChatScreen extends Component {
         .ref(`groups/${groupID}`)
         .child("last_message")
         .set(message);
+      // const newMsg = Object.assign({}, message);
+      // newMsg.timestamp = new Date();
+      // this.props.dispatch(addNewMsgToConvo(groupID, newMsg));
       this.setState({ textMessage: "" });
     }
+  };
+
+  sendSystemMessage = text => {
+    const groupID = this.state.groupID;
+    const msgID = this.messagesRef.child(`${groupID}`).push().key;
+    const message = {
+      messageType: "system",
+      message: text,
+      timestamp: firebase.database.ServerValue.TIMESTAMP,
+      sender: ""
+    };
+    this.messagesRef
+      .child(`${groupID}`)
+      .child(`${msgID}`)
+      .set(message);
   };
 
   respondToInvitation = (eventID, response) => async () => {
@@ -196,13 +264,24 @@ class ChatScreen extends Component {
       };
       firebase
         .database()
-        .ref(`users/${this.props.uid}/attending/${this.state.groupID}/${event.eventID}`)
-        .set(true)
+        .ref(
+          `users/${this.props.uid}/attending/${this.state.groupID}/${
+          event.eventID
+          }`
+        )
+        .set(true);
       firebase
         .database()
-        .ref(`users/${this.props.uid}/notAttending/${this.state.groupID}/${event.eventID}`)
-        .remove()
-      this.props.dispatch(fetchPersonalEvents(this.props.uid))
+        .ref(
+          `users/${this.props.uid}/notAttending/${this.state.groupID}/${
+          event.eventID
+          }`
+        )
+        .remove();
+      this.sendSystemMessage(
+        `${this.props.username} is attending ${event.title}!`
+      );
+      this.props.dispatch(fetchPersonalEvents(this.props.uid));
     } else {
       updatedEvent = {
         ...event,
@@ -212,13 +291,24 @@ class ChatScreen extends Component {
       };
       firebase
         .database()
-        .ref(`users/${this.props.uid}/notAttending/${this.state.groupID}/${event.eventID}`)
-        .set(true)
+        .ref(
+          `users/${this.props.uid}/notAttending/${this.state.groupID}/${
+          event.eventID
+          }`
+        )
+        .set(true);
       firebase
         .database()
-        .ref(`users/${this.props.uid}/attending/${this.state.groupID}/${event.eventID}`)
-        .remove()
-      this.props.dispatch(fetchPersonalEvents(this.props.uid))
+        .ref(
+          `users/${this.props.uid}/attending/${this.state.groupID}/${
+          event.eventID
+          }`
+        )
+        .remove();
+      this.sendSystemMessage(
+        `${this.props.username} is not attending ${event.title}!`
+      );
+      this.props.dispatch(fetchPersonalEvents(this.props.uid));
     }
     firebase
       .database()
@@ -263,27 +353,7 @@ class ChatScreen extends Component {
       this.props.dispatch(populateNotAttending(members));
     });
     this.props.dispatch(toggleEventModal(true, event));
-    // this.props.navigation.navigate("EventModal", {
-    //   modalVisibility: true
-    // });
   };
-
-  // sameDay = (dateOfLastMsg, dayOfLastMsg) => {
-  //   console.log("props date = " + this.props.prevDate);
-  //   if (
-  //     dateOfLastMsg === this.state.dateOfLastMsg &&
-  //     dayOfLastMsg === this.state.dayOfLastMsg
-  //   ) {
-  //     console.log("in true. " + `${dateOfLastMsg}/${dayOfLastMsg}`);
-  //     return true;
-  //   }
-  //   console.log("in false. " + `${dateOfLastMsg}/${dayOfLastMsg}`);
-  //   this.setState({
-  //     dateOfLastMsg,
-  //     dayOfLastMsg
-  //   });
-  //   return false;
-  // };
 
   renderRow = ({ item }) => {
     if (item.messageType === "text") {
@@ -292,14 +362,22 @@ class ChatScreen extends Component {
           style={[
             { flexDirection: "column" },
             item.sender === this.props.uid
-              ? styles.myMessageBubble
-              : styles.yourMessageBubble
+              ? [
+                styles.myMessageBubble,
+                { backgroundColor: this.props.colors.myMsgBubble }
+              ]
+              : [
+                styles.yourMessageBubble,
+                { backgroundColor: this.props.colors.yourMsgBubble }
+              ]
           ]}
           uid={this.props.uid}
           convertTime={this.convertTime}
           item={item}
           maxWidth={Dimensions.get("window").width}
           mine={item.sender === this.props.uid}
+          textColor={this.props.colors.textColor}
+          usernameColor={this.props.colors.chatUsername}
         />
       );
     } else if (item.messageType === "event") {
@@ -308,8 +386,14 @@ class ChatScreen extends Component {
         <EventBubble
           style={
             item.sender === this.props.uid
-              ? styles.myEventBubble
-              : styles.yourEventBubble
+              ? {
+                ...styles.myEventBubble,
+                backgroundColor: this.props.colors.myMsgBubble
+              }
+              : {
+                ...styles.yourEventBubble,
+                backgroundColor: this.props.colors.yourMsgBubble
+              }
           }
           showEventModal={this.showEventModal}
           uid={this.props.uid}
@@ -318,75 +402,161 @@ class ChatScreen extends Component {
           eventID={eventID}
           item={item}
           convertDate={convertDate}
+          textColor={this.props.colors.textColor}
         />
       );
+    } else if (item.messageType === "system") {
+      return (
+        <SystemMessageBubble
+          message={item.message}
+          color={this.props.colors.systemMsgBubble}
+        />
+      );
+    } else if (item.messageType === "poll") {
+      return <PollMessageBubble poll={item.pollObject} />;
     }
   };
 
   renderFooter = () => {
-    return (
-      <View style={{ height: 10 }}></View>
-    )
+    return <View style={{ height: 10 }} />;
+  };
+
+  increaseNumOfVisibleMsg = () => {
+    console.log("refreshing");
+    const { groupID, numOfVisibleMsg } = this.state;
+    this.setState({ numOfVisibleMsg: numOfVisibleMsg + 40 }
+      , () => {
+        this.messagesRef.child(`${groupID}`).once("value", snapshot => {
+          this.props.dispatch(
+            fetchConversation(groupID, (this.sort(values(snapshot.val()))).slice(0, this.state.numOfVisibleMsg))
+          );
+        });
+      })
   }
 
   render() {
     let height = Dimensions.get("window").height;
 
     return (
-      <KeyboardAvoidingView
-        behavior="padding"
-        keyboardVerticalOffset={Platform.OS === "ios" ? 87 : -300}
-        style={{ flex: 1 }}
-      >
-        <SafeAreaView style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
+        <StatusBar barStyle="light-content" />
+        <SafeAreaView
+          style={{ flex: 1, backgroundColor: this.props.colors.lightMain }}
+        >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <FlatList
-              ref="messageList"
-              onContentSizeChange={this.scrollToBottom}
-              style={{
-                padding: 10,
-                height: height,
-                backgroundColor: theme.colors.light_chat_background
-              }}
-              data={this.props.conversation.slice()}
-              renderItem={this.renderRow}
-              keyExtractor={(item, index) => index.toString()}
-              ListFooterComponent={this.renderFooter}
-            />
+            {Platform.OS === "ios" ? (
+              <FlatList
+                onEndReachedThreshold={0}
+                onEndReached={this.increaseNumOfVisibleMsg}
+                ref="messageList"
+                style={{
+                  padding: 10,
+                  height: height,
+                  backgroundColor: this.props.colors.chatBackground
+                }}
+                data={this.props.conversation}
+                renderItem={this.renderRow}
+                keyExtractor={(item, index) => index.toString()}
+                ListFooterComponent={this.renderFooter}
+                initialNumToRender={50}
+                inverted
+                extraData={this.state.numOfVisibleMsg}
+              />
+            ) : (
+                <KeyboardAwareFlatList
+                  onEndReachedThreshold={0}
+                  onEndReached={this.increaseNumOfVisibleMsg}
+                  ref="messageList"
+                  style={{
+                    padding: 10,
+                    height: height,
+                    backgroundColor: this.props.colors.chatBackground
+                  }}
+                  data={this.props.conversation}
+                  renderItem={this.renderRow}
+                  ListFooterComponent={this.renderFooter}
+                  inverted
+                  keyExtractor={(item, index) => index.toString()}
+                  initialNumToRender={50}
+                  extraData={this.state.numOfVisibleMsg}
+                />
+              )}
           </TouchableWithoutFeedback>
-          <View
-            style={[
-              styles.chatBox,
-              {
-                zIndex: 1,
-                borderTopWidth: StyleSheet.hairlineWidth,
-                borderTopColor: "lightgrey",
-                bottom: 0,
-                backgroundColor: "white"
-              }
-            ]}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : null}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 87 : -200}
+            style={{
+              flexDirection: "row",
+              zIndex: 1,
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: "lightgrey",
+              bottom: 0,
+              backgroundColor: this.props.colors.lightMain,
+              borderTopColor: "transparent",
+              paddingHorizontal: 5
+            }}
           >
-            <TextInput
-              style={styles.chatInput}
-              value={this.state.textMessage}
-              onChangeText={this.handleChange("textMessage")}
-              placeholder="Message"
-            />
             <TouchableOpacity
-              onPress={this.sendMessage}
+              onPress={
+                () => this.setState({ visible: true })
+                // this.props.navigation.navigate("CreatePoll", {
+                //   groupID: this.state.groupID,
+                //   uid: this.props.uid,
+                //   username: this.props.username
+                // })
+              }
               style={{ justifyContent: "center" }}
             >
               <MyIcon
-                name="send"
+                name="add"
                 type="material"
                 size={28}
-                color={cliqueBlue}
+                color={this.props.colors.chatButtons}
               />
             </TouchableOpacity>
-          </View>
-          <EventModal groupID={this.state.groupID} />
+            <View
+              style={{ flexDirection: "row", flex: 1, }}
+              onLayout={event => {
+                const { height } = event.nativeEvent.layout;
+                this.setState({ heightOfInput: height });
+              }}
+            >
+              <TextInput
+                autoCapitalize="sentences"
+                style={[styles.chatInput, { color: this.props.colors.textColor }]}
+                value={this.state.textMessage}
+                onChangeText={this.handleChange("textMessage")}
+                placeholder="Message"
+                placeholderTextColor={this.props.colors.placeholderColor}
+                keyboardAppearance={this.props.colors.keyboard}
+              />
+              <TouchableOpacity
+                onPress={this.sendMessage}
+                style={{ justifyContent: "center", marginRight: 5 }}
+              >
+                <MyIcon
+                  name="send"
+                  type="material"
+                  size={28}
+                  color={this.props.colors.chatButtons}
+                />
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+          <EventModal />
+          <ButtonsModal
+            visible={this.state.visible}
+            setFalse={() => this.setState({ visible: false })}
+            groupID={this.state.groupID}
+            uid={this.props.uid}
+            username={this.props.username}
+            navigation={this.props.navigation}
+            theme={this.props.colors}
+            heightOfInput={this.state.heightOfInput}
+          />
+          <PollModal group={this.props.group} />
         </SafeAreaView>
-      </KeyboardAvoidingView >
+      </View>
     );
   }
 }
@@ -394,11 +564,13 @@ class ChatScreen extends Component {
 const mapStateToProps = (state, ownProps) => {
   const { groupID } = ownProps.navigation.getParam("group");
   const stateOfGroup = state.messagesReducer[groupID] || {};
-  const username = state.authReducer.user.displayName;
+  const username = (state.authReducer.user || {}).displayName;
   return {
-    uid: state.authReducer.user.uid,
+    uid: (state.authReducer.user || {}).uid,
     conversation: stateOfGroup.messages || [],
-    username
+    username,
+    group: state.groupsReducer.groups[groupID],
+    colors: state.theme.colors
   };
 };
 
@@ -409,24 +581,23 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end"
   },
   chatBox: {
-    flexDirection: "row"
     // alignItems: "center"
   },
   chatInput: {
-    width: "90%",
+    flex: 1,
     padding: 10,
     color: "black",
     bottom: 0,
     fontSize: 16,
-    backgroundColor: 'transparent'
+    backgroundColor: "transparent",
+    borderTopColor: "transparent"
   },
   yourMessageBubble: {
     justifyContent: "space-between",
     width: "auto",
     alignSelf: "flex-start",
-    backgroundColor: theme.colors.light_chat_yours,
     borderRadius: 10,
-    marginBottom: 8,
+    marginBottom: 2,
     paddingLeft: 5,
     maxWidth: "100%",
     marginRight: 80
@@ -435,9 +606,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     width: "auto",
     alignSelf: "flex-end",
-    backgroundColor: theme.colors.light_chat_mine,
     borderRadius: 10,
-    marginBottom: 8,
+    marginBottom: 2,
     paddingLeft: 5,
     marginLeft: 80,
     maxWidth: "100%"
@@ -446,7 +616,6 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     borderRadius: 20,
     marginBottom: 5,
-    backgroundColor: theme.colors.light_chat_yours,
     width: "auto",
     marginRight: 40
   },
@@ -454,7 +623,6 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
     borderRadius: 20,
     marginBottom: 5,
-    backgroundColor: theme.colors.light_chat_mine,
     width: "auto",
     marginLeft: 50
   }
